@@ -23,12 +23,18 @@ npm install
 Create a `.env` file in the root directory with the following variables:
 
 ```env
-# Twitter API Configuration
-# Get your Bearer Token from: https://developer.twitter.com/en/portal/dashboard
-TWITTER_BEARER_TOKEN=YOUR_BEARER_TOKEN_HERE
+# Twitter API OAuth 1.0a User Context Credentials (Required for posting tweets)
+# Get these from: https://developer.twitter.com/en/portal/dashboard
+TWITTER_API_KEY=your_api_key_here
+TWITTER_API_SECRET=your_api_secret_here
+TWITTER_ACCESS_TOKEN=your_access_token_here
+TWITTER_ACCESS_TOKEN_SECRET=your_access_token_secret_here
+
+# Legacy Bearer Token (Optional - for read-only operations)
+TWITTER_BEARER_TOKEN=your_bearer_token_here
 
 # Twitter API Base URL (usually don't change this)
-TWITTER_API_BASE=https://api.x.com/2/tweets
+TWITTER_API_BASE=https://api.twitter.com/2/tweets
 
 # Server Configuration
 PORT=3000
@@ -38,12 +44,19 @@ MAX_TWEETS_PER_THREAD=25
 DELAY_BETWEEN_TWEETS=10000
 ```
 
-### 3. Get Your Twitter Bearer Token
+### 3. Get Your Twitter OAuth 1.0a Credentials
 
 1. Go to [Twitter Developer Portal](https://developer.twitter.com/en/portal/dashboard)
 2. Create a new app or use an existing one
-3. Generate a Bearer Token with user context (not app-only)
-4. Copy the token to your `.env` file
+3. Navigate to "Keys and Tokens" section
+4. Generate the following credentials:
+   - **API Key** (Consumer Key)
+   - **API Secret** (Consumer Secret)
+   - **Access Token** (with Read and Write permissions)
+   - **Access Token Secret**
+5. Copy all four values to your `.env` file
+
+**Important**: Make sure your app has "Read and Write" permissions enabled for posting tweets.
 
 ## Usage
 
@@ -113,8 +126,8 @@ POST https://xbotendpoint.onrender.com/post-thread
 ## Error Handling
 
 The service includes comprehensive error handling for:
-- Invalid Bearer Token
-- Twitter API errors
+- Invalid OAuth 1.0a credentials
+- Twitter API errors (including 403 Forbidden for incorrect authentication)
 - Invalid request format
 - Tweet length validation (280 character limit)
 - Network issues
@@ -150,4 +163,5 @@ npm test
 
 - Never commit your `.env` file to version control
 - Use environment variables for sensitive configuration
-- The Bearer Token should have appropriate permissions for posting tweets 
+- All OAuth 1.0a credentials should be kept secure and have appropriate permissions for posting tweets
+- The Access Token should have "Read and Write" permissions enabled 

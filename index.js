@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
+const oAuth1a = require('twitter-v1-oauth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,11 +27,20 @@ const logError = (message, error = null) => {
     }
 };
 
-// Validate Bearer Token
-const validateBearerToken = () => {
-    if (!config.TWITTER_BEARER_TOKEN || config.TWITTER_BEARER_TOKEN === 'YOUR_BEARER_TOKEN_HERE') {
-        logError('Bearer Token not configured. Please set TWITTER_BEARER_TOKEN environment variable.');
-        return false;
+// Validate OAuth 1.0a Credentials
+const validateOAuthCredentials = () => {
+    const requiredCredentials = [
+        { key: 'TWITTER_API_KEY', value: config.TWITTER_API_KEY },
+        { key: 'TWITTER_API_SECRET', value: config.TWITTER_API_SECRET },
+        { key: 'TWITTER_ACCESS_TOKEN', value: config.TWITTER_ACCESS_TOKEN },
+        { key: 'TWITTER_ACCESS_TOKEN_SECRET', value: config.TWITTER_ACCESS_TOKEN_SECRET }
+    ];
+
+    for (const credential of requiredCredentials) {
+        if (!credential.value || credential.value.includes('YOUR_') || credential.value.includes('HERE')) {
+            logError(`${credential.key} not configured. Please set ${credential.key} environment variable.`);
+            return false;
+        }
     }
     return true;
 };
@@ -48,10 +58,25 @@ const postTweet = async (text, replyToTweetId = null) => {
         };
     }
 
+    // Generate OAuth 1.0a authorization header
+    const oauthHeader = oAuth1a(
+        { 
+            method: 'POST', 
+            url: config.TWITTER_API_BASE, 
+            params: {} 
+        },
+        {
+            api_key: config.TWITTER_API_KEY,
+            api_secret_key: config.TWITTER_API_SECRET,
+            access_token: config.TWITTER_ACCESS_TOKEN,
+            access_token_secret: config.TWITTER_ACCESS_TOKEN_SECRET
+        }
+    );
+
     const response = await fetch(config.TWITTER_API_BASE, {
         method: 'POST',
         headers: {
-            'Authorization': `Bearer ${config.TWITTER_BEARER_TOKEN}`,
+            'Authorization': oauthHeader,
             'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
@@ -136,7 +161,7 @@ app.get('/health', (req, res) => {
         config: {
             maxTweetsPerThread: config.MAX_TWEETS_PER_THREAD,
             delayBetweenTweets: config.DELAY_BETWEEN_TWEETS,
-            bearerTokenConfigured: config.TWITTER_BEARER_TOKEN !== 'YOUR_BEARER_TOKEN_HERE'
+            oauthCredentialsConfigured: validateOAuthCredentials()
         }
     });
 });
@@ -146,10 +171,10 @@ app.post('/post-thread', async (req, res) => {
     log('📨 Received thread posting request');
     
     try {
-        // Validate Bearer Token
-        if (!validateBearerToken()) {
+        // Validate OAuth 1.0a Credentials
+        if (!validateOAuthCredentials()) {
             return res.status(500).json({ 
-                error: 'Bearer Token not configured. Please set TWITTER_BEARER_TOKEN environment variable.' 
+                error: 'OAuth 1.0a credentials not configured. Please set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.' 
             });
         }
 
@@ -226,8 +251,8 @@ app.listen(PORT, () => {
     log(`📡 Health check: http://localhost:${PORT}/health`);
     log(`📨 Post thread: POST http://localhost:${PORT}/post-thread`);
     
-    if (!validateBearerToken()) {
-        logError('⚠️  WARNING: Bearer Token not configured. Set TWITTER_BEARER_TOKEN environment variable.');
+    if (!validateOAuthCredentials()) {
+        logError('⚠️  WARNING: OAuth 1.0a credentials not configured. Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.');
     }
     
     log(`⚙️  Configuration:`);
