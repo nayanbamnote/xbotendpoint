@@ -237,10 +237,10 @@ app.post('/post-thread', async (req, res) => {
                 });
             }
             
-            if (text.length > 280) {
-                logError(`Tweet at index ${i} exceeds 280 character limit (${text.length} chars)`);
+            if (text.length > 500) {
+                logError(`Tweet at index ${i} exceeds 500 character limit (${text.length} chars)`);
                 return res.status(400).json({ 
-                    error: `Tweet at index ${i} exceeds 280 character limit (${text.length} chars)` 
+                    error: `Tweet at index ${i} exceeds 500 character limit (${text.length} chars)` 
                 });
             }
         }
