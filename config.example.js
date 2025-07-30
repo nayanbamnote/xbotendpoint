@@ -9,5 +9,5 @@ module.exports = {
     
     // Thread Configuration
     MAX_TWEETS_PER_THREAD: parseInt(process.env.MAX_TWEETS_PER_THREAD) || 25,
-    DELAY_BETWEEN_TWEETS: parseInt(process.env.DELAY_BETWEEN_TWEETS) || 10000
+    DELAY_BETWEEN_TWEETS: 10000
 }; 
