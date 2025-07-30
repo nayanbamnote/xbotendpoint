@@ -1,7 +1,6 @@
 require('dotenv').config();
 const express = require('express');
-const fetch = require('node-fetch');
-const { oAuth1a } = require('twitter-v1-oauth');
+const { TwitterApi } = require('twitter-api-v2');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -11,6 +10,9 @@ app.use(express.json());
 
 // Configuration
 const config = require('./config.example.js');
+
+// Initialize Twitter API client
+let twitterClient;
 
 // Utility function for logging with timestamps
 const log = (message, type = 'INFO') => {
@@ -24,6 +26,24 @@ const logError = (message, error = null) => {
     console.error(`[${timestamp}] [ERROR] ${message}`);
     if (error) {
         console.error(`[${timestamp}] [ERROR] Details:`, error);
+    }
+};
+
+// Initialize Twitter API client
+const initializeTwitterClient = () => {
+    try {
+        twitterClient = new TwitterApi({
+            appKey: config.TWITTER_API_KEY,
+            appSecret: config.TWITTER_API_SECRET,
+            accessToken: config.TWITTER_ACCESS_TOKEN,
+            accessSecret: config.TWITTER_ACCESS_TOKEN_SECRET,
+        });
+        
+        log('✅ Twitter API client initialized successfully');
+        return true;
+    } catch (error) {
+        logError('Failed to initialize Twitter API client', error);
+        return false;
     }
 };
 
@@ -45,50 +65,38 @@ const validateOAuthCredentials = () => {
     return true;
 };
 
+// Test Twitter API connection
+const testTwitterConnection = async () => {
+    try {
+        const user = await twitterClient.v2.me();
+        log(`✅ Twitter API connection test successful. Connected as: @${user.data.username}`);
+        return true;
+    } catch (error) {
+        logError('Twitter API connection test failed', error);
+        return false;
+    }
+};
+
 // Post a single tweet
 const postTweet = async (text, replyToTweetId = null) => {
-    const payload = {
-        text: text
-    };
-
-    // If this is a reply, add the reply configuration
-    if (replyToTweetId) {
-        payload.reply = {
-            in_reply_to_tweet_id: replyToTweetId
+    try {
+        const tweetOptions = {
+            text: text
         };
-    }
 
-    // Generate OAuth 1.0a authorization header
-    const oauthHeader = oAuth1a(
-        { 
-            method: 'POST', 
-            url: config.TWITTER_API_BASE, 
-            params: {} 
-        },
-        {
-            api_key: config.TWITTER_API_KEY,
-            api_secret_key: config.TWITTER_API_SECRET,
-            access_token: config.TWITTER_ACCESS_TOKEN,
-            access_token_secret: config.TWITTER_ACCESS_TOKEN_SECRET
+        // If this is a reply, add the reply configuration
+        if (replyToTweetId) {
+            tweetOptions.reply = {
+                in_reply_to_tweet_id: replyToTweetId
+            };
         }
-    );
 
-    const response = await fetch(config.TWITTER_API_BASE, {
-        method: 'POST',
-        headers: {
-            'Authorization': oauthHeader,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
-
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(`Twitter API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+        const tweet = await twitterClient.v2.tweet(tweetOptions);
+        return tweet.data.id;
+    } catch (error) {
+        logError('Error posting tweet', error);
+        throw error;
     }
-
-    const data = await response.json();
-    return data.data.id;
 };
 
 // Convert request body format to array of tweets
@@ -153,15 +161,37 @@ const postThread = async (texts) => {
 // API Routes
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
     log('Health check requested');
+    
+    const oauthValid = validateOAuthCredentials();
+    let connectionTest = false;
+    let userInfo = null;
+    
+    if (oauthValid && twitterClient) {
+        try {
+            const user = await twitterClient.v2.me();
+            connectionTest = true;
+            userInfo = {
+                username: user.data.username,
+                name: user.data.name,
+                id: user.data.id
+            };
+        } catch (error) {
+            connectionTest = false;
+        }
+    }
+    
     res.json({ 
         status: 'healthy', 
         timestamp: new Date().toISOString(),
         config: {
             maxTweetsPerThread: config.MAX_TWEETS_PER_THREAD,
             delayBetweenTweets: config.DELAY_BETWEEN_TWEETS,
-            oauthCredentialsConfigured: validateOAuthCredentials()
+            oauthCredentialsConfigured: oauthValid,
+            twitterApiLibrary: 'twitter-api-v2',
+            connectionTest: connectionTest,
+            connectedUser: userInfo
         }
     });
 });
@@ -171,10 +201,10 @@ app.post('/post-thread', async (req, res) => {
     log('📨 Received thread posting request');
     
     try {
-        // Validate OAuth 1.0a Credentials
-        if (!validateOAuthCredentials()) {
+        // Validate OAuth 1.0a Credentials and client
+        if (!validateOAuthCredentials() || !twitterClient) {
             return res.status(500).json({ 
-                error: 'OAuth 1.0a credentials not configured. Please set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.' 
+                error: 'Twitter API not configured properly. Please check your credentials.' 
             });
         }
 
@@ -246,16 +276,25 @@ app.post('/post-thread', async (req, res) => {
 });
 
 // Start server
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     log(`🚀 Twitter Thread Poster started on port ${PORT}`);
     log(`📡 Health check: http://localhost:${PORT}/health`);
     log(`📨 Post thread: POST http://localhost:${PORT}/post-thread`);
     
-    if (!validateOAuthCredentials()) {
-        logError('⚠️  WARNING: OAuth 1.0a credentials not configured. Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.');
+    // Initialize Twitter client
+    const credentialsValid = validateOAuthCredentials();
+    if (credentialsValid) {
+        const clientInitialized = initializeTwitterClient();
+        if (clientInitialized) {
+            // Test connection
+            await testTwitterConnection();
+        }
+    } else {
+        logError('⚠️  WARNING: Twitter API credentials not configured. Set TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, and TWITTER_ACCESS_TOKEN_SECRET environment variables.');
     }
     
     log(`⚙️  Configuration:`);
     log(`   Max tweets per thread: ${config.MAX_TWEETS_PER_THREAD}`);
     log(`   Delay between tweets: ${config.DELAY_BETWEEN_TWEETS}ms`);
+    log(`   Twitter API library: twitter-api-v2 (modern)`);
 });
