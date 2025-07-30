@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
 
@@ -8,8 +9,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 
 // Configuration
-const TWITTER_API_BASE = 'https://api.x.com/2/tweets';
-const BEARER_TOKEN = process.env.TWITTER_BEARER_TOKEN || 'YOUR_BEARER_TOKEN_HERE';
+const config = require('./config.example.js');
 
 // Utility function for logging with timestamps
 const log = (message, type = 'INFO') => {
@@ -28,11 +28,61 @@ const logError = (message, error = null) => {
 
 // Validate Bearer Token
 const validateBearerToken = () => {
-    if (!BEARER_TOKEN || BEARER_TOKEN === 'YOUR_BEARER_TOKEN_HERE') {
+    if (!config.TWITTER_BEARER_TOKEN || config.TWITTER_BEARER_TOKEN === 'YOUR_BEARER_TOKEN_HERE') {
         logError('Bearer Token not configured. Please set TWITTER_BEARER_TOKEN environment variable.');
         return false;
     }
     return true;
+};
+
+// Post a single tweet
+const postTweet = async (text, replyToTweetId = null) => {
+    const payload = {
+        text: text
+    };
+
+    // If this is a reply, add the reply configuration
+    if (replyToTweetId) {
+        payload.reply = {
+            in_reply_to_tweet_id: replyToTweetId
+        };
+    }
+
+    const response = await fetch(config.TWITTER_API_BASE, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${config.TWITTER_BEARER_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Twitter API error: ${response.status} ${response.statusText} - ${JSON.stringify(errorData)}`);
+    }
+
+    const data = await response.json();
+    return data.data.id;
+};
+
+// Convert request body format to array of tweets
+const parseThreadFromRequestBody = (body) => {
+    const tweets = [];
+    
+    // Extract numbered tweets (tweet1, tweet2, tweet3, etc.)
+    let tweetIndex = 1;
+    while (body[`tweet${tweetIndex}`]) {
+        tweets.push(body[`tweet${tweetIndex}`]);
+        tweetIndex++;
+    }
+    
+    // Add closing tweet if present
+    if (body.closingTweet) {
+        tweets.push(body.closingTweet);
+    }
+    
+    return tweets;
 };
 
 // Post a complete thread
@@ -47,16 +97,19 @@ const postThread = async (texts) => {
         const tweetNumber = i + 1;
         
         log(`📝 Posting tweet ${tweetNumber}/${texts.length}`);
+        log(`📄 Tweet content: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
         
         try {
             const tweetId = await postTweet(text, previousTweetId);
             tweetIds.push(tweetId);
             previousTweetId = tweetId;
             
-            // Add 10-second delay between tweets as requested
+            log(`✅ Tweet ${tweetNumber} posted successfully with ID: ${tweetId}`);
+            
+            // Add delay between tweets (except for the last one)
             if (i < texts.length - 1) {
-                const delay = 10000; // 10 seconds between tweets
-                log(`⏳ Waiting ${delay}ms (10 seconds) before next tweet...`);
+                const delay = config.DELAY_BETWEEN_TWEETS;
+                log(`⏳ Waiting ${delay}ms (${delay/1000} seconds) before next tweet...`);
                 await new Promise(resolve => setTimeout(resolve, delay));
             }
         } catch (error) {
@@ -79,26 +132,19 @@ app.get('/health', (req, res) => {
     log('Health check requested');
     res.json({ 
         status: 'healthy', 
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        config: {
+            maxTweetsPerThread: config.MAX_TWEETS_PER_THREAD,
+            delayBetweenTweets: config.DELAY_BETWEEN_TWEETS,
+            bearerTokenConfigured: config.TWITTER_BEARER_TOKEN !== 'YOUR_BEARER_TOKEN_HERE'
+        }
     });
 });
 
-// Post thread endpoint - runs immediately when called
+// Post thread endpoint
 app.post('/post-thread', async (req, res) => {
     log('📨 Received thread posting request');
     
-    // Just console log the request body for now
-    console.log('Request body:', JSON.stringify(req.body, null, 2));
-    console.log('Request headers:', JSON.stringify(req.headers, null, 2));
-    
-    // Return success response immediately
-    res.status(200).json({
-        success: true,
-        message: 'Request received and logged',
-        timestamp: new Date().toISOString()
-    });
-    
-    /*
     try {
         // Validate Bearer Token
         if (!validateBearerToken()) {
@@ -107,26 +153,29 @@ app.post('/post-thread', async (req, res) => {
             });
         }
 
-        const { texts } = req.body;
+        // Parse the request body to extract tweets
+        const tweets = parseThreadFromRequestBody(req.body);
+        
+        log(`📋 Parsed ${tweets.length} tweets from request body`);
 
         // Validate input
-        if (!texts || !Array.isArray(texts) || texts.length === 0) {
-            logError('Invalid request: texts array is required and must not be empty');
+        if (tweets.length === 0) {
+            logError('Invalid request: no tweets found in request body');
             return res.status(400).json({ 
-                error: 'texts array is required and must not be empty' 
+                error: 'No tweets found in request body. Expected format: { tweet1: "...", tweet2: "...", closingTweet: "..." }' 
             });
         }
 
-        if (texts.length > 25) {
-            logError('Invalid request: maximum 25 tweets allowed per thread');
+        if (tweets.length > config.MAX_TWEETS_PER_THREAD) {
+            logError(`Invalid request: maximum ${config.MAX_TWEETS_PER_THREAD} tweets allowed per thread`);
             return res.status(400).json({ 
-                error: 'Maximum 25 tweets allowed per thread' 
+                error: `Maximum ${config.MAX_TWEETS_PER_THREAD} tweets allowed per thread` 
             });
         }
 
         // Validate each tweet text
-        for (let i = 0; i < texts.length; i++) {
-            const text = texts[i];
+        for (let i = 0; i < tweets.length; i++) {
+            const text = tweets[i];
             if (!text || typeof text !== 'string' || text.trim().length === 0) {
                 logError(`Invalid tweet text at index ${i}: must be non-empty string`);
                 return res.status(400).json({ 
@@ -147,18 +196,19 @@ app.post('/post-thread', async (req, res) => {
         
         log(`📋 Thread details:`);
         log(`   ID: ${threadId}`);
-        log(`   Tweet count: ${texts.length}`);
+        log(`   Tweet count: ${tweets.length}`);
         log(`   Starting execution immediately...`);
 
         // Start posting the thread immediately
-        const tweetIds = await postThread(texts);
+        const tweetIds = await postThread(tweets);
 
         res.status(200).json({
             success: true,
             threadId,
             completedAt: new Date().toISOString(),
-            tweetCount: texts.length,
-            tweetIds: tweetIds
+            tweetCount: tweets.length,
+            tweetIds: tweetIds,
+            message: `Successfully posted ${tweets.length} tweets as a thread`
         });
 
     } catch (error) {
@@ -168,7 +218,6 @@ app.post('/post-thread', async (req, res) => {
             details: error.message 
         });
     }
-    */
 });
 
 // Start server
@@ -180,4 +229,8 @@ app.listen(PORT, () => {
     if (!validateBearerToken()) {
         logError('⚠️  WARNING: Bearer Token not configured. Set TWITTER_BEARER_TOKEN environment variable.');
     }
+    
+    log(`⚙️  Configuration:`);
+    log(`   Max tweets per thread: ${config.MAX_TWEETS_PER_THREAD}`);
+    log(`   Delay between tweets: ${config.DELAY_BETWEEN_TWEETS}ms`);
 });

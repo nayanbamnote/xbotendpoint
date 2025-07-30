@@ -1,172 +1,80 @@
 const fetch = require('node-fetch');
 
-const BASE_URL = 'http://localhost:3000';
+// Test configuration - using live production endpoint
+const SERVER_URL = 'https://xbotendpoint.onrender.com';
 
-// Test data - sample thread
-const testThread = {
-    texts: [
-        "🚀 Just launched my new project! Here's what I built...",
-        "✨ Key features include:\n• Real-time updates\n• Beautiful UI\n• Scalable architecture",
-        "🔧 Built with:\n• Node.js\n• Express\n• Modern JavaScript",
-        "📈 Results so far:\n• 1000+ users\n• 99.9% uptime\n• Great feedback!",
-        "🎯 Next steps:\n• Mobile app\n• API documentation\n• Community features\n\nWhat would you like to see next?"
-    ],
-    delayMs: 10000 // 10 seconds delay for testing
+// Test request body matching the format from reqestbody.md
+const testThreadData = {
+    "tweet1": "Midjourney just launched its first AI video model.\n\nThese videos are surprisingly rich and diverse 💭\n\n5 great examples + resources:\n\n1/ Steampunk airplane taking off https://t.co/C9wo0m6jak",
+    "tweet2": "2/ Grok 4's neural cosmos visualization https://t.co/QHslMyKCgo",
+    "tweet3": "3/ Artistic AI animations #AIart https://t.co/Ot9k26I6V0",
+    "tweet4": "4/ Mysterious 'somewhere out there' video https://t.co/6Zi4Ln7T6f",
+    "tweet5": "5/ Midjourney Veo 3 video demonstration https://t.co/ctwzpetaU4",
+    "closingTweet": "If you liked this thread, follow [@AIxFunding] and comment/repost/like so we can provide more AI knowledge! Cheers",
+    "scheduledTime": "2025-07-30T06:13:09Z",
+    "index": 1
 };
 
-// Utility function for logging
-const log = (message) => {
-    const timestamp = new Date().toISOString();
-    console.log(`[${timestamp}] ${message}`);
-};
-
-// Test functions
-const testHealthCheck = async () => {
-    log('🏥 Testing health check...');
+async function testHealthCheck() {
+    console.log('🔍 Testing health check...');
     try {
-        const response = await fetch(`${BASE_URL}/health`);
+        const response = await fetch(`${SERVER_URL}/health`);
         const data = await response.json();
-        log(`✅ Health check passed: ${JSON.stringify(data, null, 2)}`);
-        return true;
+        console.log('✅ Health check response:', JSON.stringify(data, null, 2));
+        return data;
     } catch (error) {
-        log(`❌ Health check failed: ${error.message}`);
-        return false;
+        console.error('❌ Health check failed:', error.message);
+        return null;
     }
-};
+}
 
-const testScheduleThread = async () => {
-    log('📨 Testing thread scheduling...');
+async function testThreadPosting() {
+    console.log('\n📨 Testing thread posting...');
+    console.log('📋 Request body:', JSON.stringify(testThreadData, null, 2));
+    
     try {
-        const response = await fetch(`${BASE_URL}/schedule-thread`, {
+        const response = await fetch(`${SERVER_URL}/post-thread`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(testThread)
+            body: JSON.stringify(testThreadData)
         });
-        
+
         const data = await response.json();
         
         if (response.ok) {
-            log(`✅ Thread scheduled successfully: ${JSON.stringify(data, null, 2)}`);
-            return data.threadId;
+            console.log('✅ Thread posted successfully!');
+            console.log('📊 Response:', JSON.stringify(data, null, 2));
         } else {
-            log(`❌ Thread scheduling failed: ${JSON.stringify(data, null, 2)}`);
-            return null;
+            console.error('❌ Thread posting failed:', response.status, response.statusText);
+            console.error('📊 Error response:', JSON.stringify(data, null, 2));
         }
+        
+        return data;
     } catch (error) {
-        log(`❌ Thread scheduling error: ${error.message}`);
+        console.error('❌ Thread posting request failed:', error.message);
         return null;
     }
-};
-
-const testGetThreadStatus = async (threadId) => {
-    log(`📊 Testing thread status for: ${threadId}`);
-    try {
-        const response = await fetch(`${BASE_URL}/thread/${threadId}`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            log(`✅ Thread status: ${JSON.stringify(data, null, 2)}`);
-            return data;
-        } else {
-            log(`❌ Failed to get thread status: ${JSON.stringify(data, null, 2)}`);
-            return null;
-        }
-    } catch (error) {
-        log(`❌ Thread status error: ${error.message}`);
-        return null;
-    }
-};
-
-const testListThreads = async () => {
-    log('📋 Testing list threads...');
-    try {
-        const response = await fetch(`${BASE_URL}/threads`);
-        const data = await response.json();
-        
-        if (response.ok) {
-            log(`✅ Threads list: ${JSON.stringify(data, null, 2)}`);
-            return data;
-        } else {
-            log(`❌ Failed to list threads: ${JSON.stringify(data, null, 2)}`);
-            return null;
-        }
-    } catch (error) {
-        log(`❌ List threads error: ${error.message}`);
-        return null;
-    }
-};
-
-const testCancelThread = async (threadId) => {
-    log(`❌ Testing thread cancellation for: ${threadId}`);
-    try {
-        const response = await fetch(`${BASE_URL}/thread/${threadId}`, {
-            method: 'DELETE'
-        });
-        const data = await response.json();
-        
-        if (response.ok) {
-            log(`✅ Thread cancelled successfully: ${JSON.stringify(data, null, 2)}`);
-            return true;
-        } else {
-            log(`❌ Failed to cancel thread: ${JSON.stringify(data, null, 2)}`);
-            return false;
-        }
-    } catch (error) {
-        log(`❌ Thread cancellation error: ${error.message}`);
-        return false;
-    }
-};
-
-// Main test runner
-const runTests = async () => {
-    log('🧪 Starting Twitter Thread Scheduler Tests...');
-    
-    // Test 1: Health check
-    const healthOk = await testHealthCheck();
-    if (!healthOk) {
-        log('❌ Server not running. Please start the server first with: npm start');
-        return;
-    }
-    
-    // Test 2: Schedule a thread
-    const threadId = await testScheduleThread();
-    if (!threadId) {
-        log('❌ Failed to schedule thread. Stopping tests.');
-        return;
-    }
-    
-    // Test 3: Get thread status immediately
-    await testGetThreadStatus(threadId);
-    
-    // Test 4: List all threads
-    await testListThreads();
-    
-    // Test 5: Wait a bit and check status again
-    log('⏳ Waiting 5 seconds before checking status again...');
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    await testGetThreadStatus(threadId);
-    
-    // Test 6: Cancel the thread (optional - comment out if you want to see it execute)
-    // await testCancelThread(threadId);
-    
-    log('🎉 All tests completed!');
-    log(`💡 To monitor the thread execution, check: http://localhost:3000/thread/${threadId}`);
-};
-
-// Run tests if this file is executed directly
-if (require.main === module) {
-    runTests().catch(error => {
-        log(`💥 Test runner error: ${error.message}`);
-        process.exit(1);
-    });
 }
 
-module.exports = {
-    testHealthCheck,
-    testScheduleThread,
-    testGetThreadStatus,
-    testListThreads,
-    testCancelThread
-}; 
+async function runTests() {
+    console.log('🚀 Starting Twitter Thread Poster Tests');
+    console.log(`🌐 Testing against: ${SERVER_URL}\n`);
+    
+    // Test 1: Health Check
+    const healthData = await testHealthCheck();
+    
+    if (!healthData) {
+        console.log('❌ Server is not responding. Please check if the service is running.');
+        return;
+    }
+    
+    // Test 2: Thread Posting
+    await testThreadPosting();
+    
+    console.log('\n🏁 Tests completed!');
+}
+
+// Run the tests
+runTests().catch(console.error); 
