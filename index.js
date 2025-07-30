@@ -38,7 +38,6 @@ const initializeTwitterClient = () => {
             accessToken: config.TWITTER_ACCESS_TOKEN,
             accessSecret: config.TWITTER_ACCESS_TOKEN_SECRET,
         });
-        
         log('✅ Twitter API client initialized successfully');
         return true;
     } catch (error) {
