@@ -1,7 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
-const oAuth1a = require('twitter-v1-oauth');
+const { oAuth1a } = require('twitter-v1-oauth');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
